@@ -53,20 +53,25 @@ public class ObjectifyImpl implements Objectify, Closeable
 	public ObjectifyImpl(final ObjectifyFactory fact) {
 		this.factory = fact;
 		this.options = new ObjectifyOptions();
-		this.transactor = new TransactorNo(this);
+		this.transactor = new TransactorNo(factory);
 	}
 
-	public ObjectifyImpl(final ObjectifyFactory factory, final ObjectifyOptions options, final TransactorSupplier supplier) {
+	public ObjectifyImpl(final ObjectifyFactory factory, final ObjectifyOptions options, final Transactor transactor) {
 		this.factory = factory;
 		this.options = options;
-		this.transactor = supplier.get(this);
+		this.transactor = transactor;
 	}
 
 	/* (non-Javadoc)
-		 * @see com.googlecode.objectify.Objectify#getFactory()
-		 */
+	 * @see com.googlecode.objectify.Objectify#getFactory()
+	 */
 	public ObjectifyFactory factory() {
 		return this.factory;
+	}
+
+	@Override
+	public Objectify namespace(final String namespace) {
+		return options(options.namespace(namespace));
 	}
 
 	/* (non-Javadoc)
@@ -115,7 +120,7 @@ public class ObjectifyImpl implements Objectify, Closeable
 	 */
 	@Override
 	public Objectify cache(boolean value) {
-		return makeNew(options.cache(value));
+		return options(options.cache(value));
 	}
 
 	/* (non-Javadoc)
@@ -123,33 +128,23 @@ public class ObjectifyImpl implements Objectify, Closeable
 	 */
 	@Override
 	public Objectify mandatoryTransactions(boolean value) {
-		return makeNew(options.mandatoryTransactions(value));
+		return options(options.mandatoryTransactions(value));
 	}
 
 	/** Same transactor, different options */
-	private ObjectifyImpl makeNew(final ObjectifyOptions opts) {
-		return makeNew(opts, ofy -> transactor);
+	ObjectifyImpl options(final ObjectifyOptions opts) {
+		return makeNew(opts, transactor);
 	}
 
 	/** Same options, different transactor */
-	ObjectifyImpl makeNew(final TransactorSupplier supplier) {
-		return makeNew(options, supplier);
+	ObjectifyImpl transactor(final Transactor transactor) {
+		return makeNew(options, transactor);
 	}
 
 	/** Can be overriden if you want to subclass the ObjectifyImpl */
-	protected ObjectifyImpl makeNew(final ObjectifyOptions opts, final TransactorSupplier supplier) {
-		return new ObjectifyImpl(factory, opts, supplier);
+	protected ObjectifyImpl makeNew(final ObjectifyOptions opts, final Transactor transactor) {
+		return new ObjectifyImpl(factory, opts, transactor);
 	}
-
-	/* (non-Javadoc)
-	 * @see com.googlecode.objectify.Objectify#transactionless()
-	 */
-	@Deprecated
-	@Override
-	public Objectify transactionless() {
-		return transactor.transactionless(this);
-	}
-
 
 	/* (non-Javadoc)
 	 * @see com.googlecode.objectify.Objectify#getTxn()
@@ -246,7 +241,7 @@ public class ObjectifyImpl implements Objectify, Closeable
 	/**
 	 */
 	protected AsyncDatastoreReaderWriter asyncDatastore() {
-		return transactor.asyncDatastore();
+		return transactor.asyncDatastore(this);
 	}
 
 	/**
@@ -306,7 +301,7 @@ public class ObjectifyImpl implements Objectify, Closeable
 		} else {
 			// Special case entity pojos that become keys
 			if (value.getClass().isAnnotationPresent(Entity.class)) {
-				return KeyValue.of(factory().keys().rawKeyOf(value));
+				return KeyValue.of(factory().keys().rawKeyOf(value, getOptions().getNamespace()));
 			} else {
 				// Run it through a translator
 				final Translator<Object, Value<?>> translator = factory().getTranslators().get(new TypeKey<>(value.getClass()), new CreateContext(factory()), Path.root());
@@ -332,21 +327,21 @@ public class ObjectifyImpl implements Objectify, Closeable
 
 	@Override
 	public void flush() {
-		transactor.getDeferrer().flush();
+		transactor.getDeferrer().flush(this);
 	}
 
 	/**
 	 * Defer the saving of one entity. Updates the session cache with this new value.
 	 */
 	void deferSave(final Object entity) {
-		transactor.getDeferrer().deferSave(entity);
+		transactor.getDeferrer().deferSave(getOptions(), entity);
 	}
 
 	/**
 	 * Defer the deletion of one entity. Updates the session cache with this new value.
 	 */
 	void deferDelete(final Key<?> key) {
-		transactor.getDeferrer().deferDelete(key);
+		transactor.getDeferrer().deferDelete(getOptions(), key);
 	}
 
 	/**

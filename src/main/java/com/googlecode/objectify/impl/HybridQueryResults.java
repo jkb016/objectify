@@ -5,6 +5,7 @@ import com.google.cloud.datastore.QueryResults;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.datastore.v1.QueryResultBatch.MoreResultsType;
 import com.googlecode.objectify.Key;
 import com.googlecode.objectify.Result;
 import com.googlecode.objectify.util.IterateFunction;
@@ -67,8 +68,8 @@ public class HybridQueryResults<T> implements QueryResults<T> {
 	/** Detects Integer.MAX_VALUE and prevents OOM exceptions */
 	private <T> Iterator<Iterator<T>> safePartition(final Iterator<T> input, int chunkSize) {
 		// Cloud Datastore library errors if you try to fetch more than 1000 keys at a time
-		if (chunkSize > 1000) {
-			chunkSize = 1000;
+		if (chunkSize > AsyncDatastoreReaderWriterImpl.MAX_READ_SIZE) {
+			chunkSize = AsyncDatastoreReaderWriterImpl.MAX_READ_SIZE;
 		}
 		return Iterators.transform(Iterators.partition(input, chunkSize), IterateFunction.instance());
 	}
@@ -107,15 +108,19 @@ public class HybridQueryResults<T> implements QueryResults<T> {
 		return result.getResult();
 	}
 
-	/** Not implemented */
-	@Override
-	public void remove() {
-		throw new UnsupportedOperationException();
-	}
-
 	@Override
 	public Class<?> getResultClass() {
 		// Not really possible to do this; a query could produce anything
 		return Object.class;
+	}
+
+	@Override
+	public int getSkippedResults() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public MoreResultsType getMoreResults() {
+		throw new UnsupportedOperationException();
 	}
 }

@@ -59,7 +59,9 @@ public class QueryImpl<T> extends SimpleQueryImpl<T> implements Query<T>, Clonea
 	QueryImpl(final LoaderImpl loader, final String kind, final Class<T> clazz) {
 		super(loader);
 
-		this.actual = new QueryDef().kind(kind);
+		this.actual = new QueryDef()
+				.kind(kind)
+				.namespace(loader.getObjectifyImpl().getOptions().getNamespace());
 
 		// If this is a polymorphic subclass, add an extra filter
 		if (clazz != null) {
@@ -200,7 +202,7 @@ public class QueryImpl<T> extends SimpleQueryImpl<T> implements Query<T>, Clonea
 
 	/** Modifies the instance */
 	void setAncestor(final Object keyOrEntity) {
-		final com.google.cloud.datastore.Key key = loader.ofy.factory().keys().anythingToRawKey(keyOrEntity);
+		final com.google.cloud.datastore.Key key = loader.ofy.factory().keys().anythingToRawKey(keyOrEntity, loader.ofy.getOptions().getNamespace());
 		this.actual = this.actual.andFilter(PropertyFilter.hasAncestor(key));
 	}
 

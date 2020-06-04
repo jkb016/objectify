@@ -3,6 +3,7 @@ package com.googlecode.objectify.impl;
 import com.google.cloud.datastore.FullEntity;
 import com.google.cloud.datastore.IncompleteKey;
 import com.google.cloud.datastore.KeyValue;
+import com.google.cloud.datastore.StringValue;
 import com.google.cloud.datastore.Value;
 import com.google.cloud.datastore.ValueType;
 import com.google.common.base.Preconditions;
@@ -10,6 +11,7 @@ import com.googlecode.objectify.Key;
 import com.googlecode.objectify.ObjectifyFactory;
 import com.googlecode.objectify.Ref;
 import com.googlecode.objectify.annotation.Id;
+import com.googlecode.objectify.annotation.Namespace;
 import com.googlecode.objectify.annotation.Parent;
 import com.googlecode.objectify.impl.translate.CreateContext;
 import com.googlecode.objectify.impl.translate.LoadContext;
@@ -39,6 +41,9 @@ public class KeyMetadata<P>
 
 	/** The @Parent field on the pojo, or null if there is no parent */
 	private PropertyPopulator<Object, Object> parentMeta;
+
+	/** The @Namespace field on the pojo, or null if there is no namespace */
+	private PropertyPopulator<Object, Object> namespaceMeta;
 
 	/** */
 	private final Class<P> clazz;
@@ -94,6 +99,17 @@ public class KeyMetadata<P>
 				Translator<Object, Object> translator = ctx.getTranslator(new TypeKey<>(prop), ctx, path.extend(prop.getName()));
 
 				this.parentMeta = new PropertyPopulator<>(prop, translator);
+			} else if (field.getAnnotation(Namespace.class) != null) {
+				if (this.namespaceMeta != null)
+					throw new IllegalStateException("Multiple @Namespace fields in the class hierarchy of " + clazz.getName());
+
+				if (field.getType() != String.class)
+					throw new IllegalStateException("@Namespace field '" + field + "' must be of type String");
+
+				Property prop = new FieldProperty(ctx.getFactory(), clazz, field);
+				Translator<Object, Object> translator = ctx.getTranslator(new TypeKey<>(prop), ctx, path.extend(prop.getName()));
+
+				this.namespaceMeta = new PropertyPopulator<>(prop, translator);
 			}
 		}
 	}
@@ -119,6 +135,9 @@ public class KeyMetadata<P>
 		if (parentMeta != null && container.contains(parentMeta.getProperty().getName()))
 			throw new IllegalStateException("Datastore has a property present for the parent field " + parentMeta.getProperty() + " which would conflict with the key: " + container);
 
+		if (namespaceMeta != null && container.contains(namespaceMeta.getProperty().getName()))
+			throw new IllegalStateException("Datastore has a property present for the namespace field " + namespaceMeta.getProperty() + " which would conflict with the key: " + container);
+
 		this.setKey(pojo, container.getKey(), ctx, containerPath);
 	}
 
@@ -143,6 +162,11 @@ public class KeyMetadata<P>
 
 			parentMeta.setValue(pojo, (Value)KeyValue.of(parentKey), ctx, containerPath);
 		}
+
+		if (namespaceMeta != null) {
+			// Don't worry about being inconsistant with the parent, the key coming from the datastore should be consistent
+			namespaceMeta.setValue(pojo, (Value)StringValue.of(key.getNamespace()), ctx, containerPath);
+		}
 	}
 
 	/**
@@ -150,7 +174,7 @@ public class KeyMetadata<P>
 	 */
 	@SuppressWarnings("unchecked")
 	public <K extends IncompleteKey> void setKey(final FullEntity.Builder<K> container, final P pojo) {
-		final IncompleteKey rawKey = getIncompleteKey(pojo);
+		final IncompleteKey rawKey = getIncompleteKey(pojo, null);
 
 		if (!(rawKey instanceof com.google.cloud.datastore.Key)) {
 			// it's incomplete, make sure we can save it
@@ -169,9 +193,10 @@ public class KeyMetadata<P>
 	 * Gets a key composed of the relevant id and parent fields in the object.
 	 *
 	 * @param pojo must be of the entityClass type for this metadata.
+	 * @param namespaceHint is a namespace that will be used if one is not specified in the pojo
 	 * @return either a Key or IncompleteKey depending on whether the id is null or not
 	 */
-	public IncompleteKey getIncompleteKey(final P pojo) {
+	public IncompleteKey getIncompleteKey(final P pojo, final String namespaceHint) {
 		log.trace("Getting key from {}", pojo);
 
 		if (!clazz.isAssignableFrom(pojo.getClass()))
@@ -179,11 +204,13 @@ public class KeyMetadata<P>
 
 		final Object id = getId(pojo);
 		final com.google.cloud.datastore.Key parent = getParentRaw(pojo);
+		final String pojoNamespace = getNamespace(pojo);
+		final String namespace = pojoNamespace != null ? pojoNamespace : namespaceHint;
 
 		if (id == null)
-			return factory.keys().createRawIncomplete(parent, kind);
+			return factory.keys().createRawIncomplete(namespace, parent, kind);
 		else
-			return factory.keys().createRawAny(parent, kind, id);
+			return factory.keys().createRawAny(namespace, parent, kind, id);
 	}
 
 	/**
@@ -192,8 +219,8 @@ public class KeyMetadata<P>
 	 * @param pojo must be of the entityClass type for this metadata.
 	 * @throws IllegalArgumentException if pojo has an incomplete key
 	 */
-	public com.google.cloud.datastore.Key getCompleteKey(final P pojo) {
-		final com.google.cloud.datastore.IncompleteKey key = getIncompleteKey(pojo);
+	public com.google.cloud.datastore.Key getCompleteKey(final P pojo, final String namespaceHint) {
+		final com.google.cloud.datastore.IncompleteKey key = getIncompleteKey(pojo, namespaceHint);
 
 		if (key instanceof com.google.cloud.datastore.Key)
 			return (com.google.cloud.datastore.Key)key;
@@ -256,6 +283,17 @@ public class KeyMetadata<P>
 			throw new IllegalArgumentException("Trying to use metadata for " + clazz.getName() + " to set key of " + pojo.getClass().getName());
 
 		this.idMeta.getProperty().set(pojo, id);
+	}
+
+	/**
+	 * Get whatever is in the @Namespace field of the pojo
+	 * @return null if there is no @Namespace field, or if the field is null
+	 */
+	private String getNamespace(P pojo) {
+		if (namespaceMeta == null)
+			return null;
+
+		return (String)namespaceMeta.getProperty().get(pojo);
 	}
 
 	/**

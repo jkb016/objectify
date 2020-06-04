@@ -17,7 +17,7 @@ import com.googlecode.objectify.impl.Keys;
 import com.googlecode.objectify.impl.ObjectifyImpl;
 import com.googlecode.objectify.impl.ObjectifyOptions;
 import com.googlecode.objectify.impl.Registrar;
-import com.googlecode.objectify.impl.TransactorSupplier;
+import com.googlecode.objectify.impl.Transactor;
 import com.googlecode.objectify.impl.TypeUtils;
 import com.googlecode.objectify.impl.translate.Translators;
 import net.spy.memcached.MemcachedClient;
@@ -91,7 +91,11 @@ public class ObjectifyFactory implements Forge
 		this(datastore, (MemcacheService)null);
 	}
 
-	/** Uses default datastore */
+	/**
+	 * Uses default datastore
+	 * @deprecated call {@code ObjectifyFactory(new SpyMemcacheService(memcache))} instead
+	 */
+	@Deprecated
 	public ObjectifyFactory(final MemcachedClient memcache) {
 		this(DatastoreOptions.getDefaultInstance().getService(), memcache);
 	}
@@ -102,7 +106,9 @@ public class ObjectifyFactory implements Forge
 	}
 
 	/**
+	 * @deprecated call {@code ObjectifyFactory(datastore, new SpyMemcacheService(memcache))} instead
 	 */
+	@Deprecated
 	public ObjectifyFactory(final Datastore datastore, final MemcachedClient memcache) {
 		this(datastore, new SpyMemcacheService(memcache));
 	}
@@ -354,7 +360,7 @@ public class ObjectifyFactory implements Forge
 	 * @param num must be >= 1 and <= 1 billion
 	 */
 	public <T> KeyRange<T> allocateIds(final Object parentKeyOrEntity, final Class<T> clazz, final int num) {
-		final Key<?> parent = keys().anythingToKey(parentKeyOrEntity);
+		final Key<?> parent = keys().anythingToKey(parentKeyOrEntity, null);
 		final String kind = Key.getKind(clazz);
 
 		final IncompleteKey incompleteKey = com.google.cloud.datastore.Key.newBuilder(parent.getRaw(), kind).build();
@@ -419,8 +425,8 @@ public class ObjectifyFactory implements Forge
 	}
 
 	/** This is only public because it is used from the impl package; don't use this as a public API */
-	public ObjectifyImpl open(final ObjectifyOptions opts, final TransactorSupplier transactorSupplier) {
-		final ObjectifyImpl objectify = new ObjectifyImpl(this, opts, transactorSupplier);
+	public ObjectifyImpl open(final ObjectifyOptions opts, final Transactor transactor) {
+		final ObjectifyImpl objectify = new ObjectifyImpl(this, opts, transactor);
 		stacks.get().add(objectify);
 		return objectify;
 	}

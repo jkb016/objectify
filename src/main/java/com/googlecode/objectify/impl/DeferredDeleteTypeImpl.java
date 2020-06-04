@@ -44,7 +44,7 @@ class DeferredDeleteTypeImpl implements DeferredDeleteType
 
 	@Override
 	public DeferredDeleteIds parent(final Object keyOrEntity) {
-		final Key<?> parentKey = factory().keys().anythingToKey(keyOrEntity);
+		final Key<?> parentKey = factory().keys().anythingToKey(keyOrEntity, deleter.ofy.getOptions().getNamespace());
 		return new DeferredDeleteTypeImpl(deleter, type, parentKey);
 	}
 
@@ -70,7 +70,7 @@ class DeferredDeleteTypeImpl implements DeferredDeleteType
 
 	@Override
 	public void ids(final Iterable<?> ids) {
-		this.deleter.keys(factory().keys().createKeys(parent, type, ids));
+		this.deleter.keys(factory().keys().createKeys(deleter.ofy.getOptions().getNamespace(), parent, type, ids));
 	}
 
 	private ObjectifyFactory factory() {
